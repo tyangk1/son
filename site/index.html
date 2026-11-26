@@ -1,3 +1,81 @@
-<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>NÉT · đang dựng</title>
-<style>html,body{height:100%;margin:0}body{display:grid;place-items:center;background:#F2EBDF;color:#1D1B1A;font:600 18px/1.5 system-ui,sans-serif}b{color:#A3241D}</style></head>
-<body><p><b>NÉT</b> · trang concept của Web Atelier đang được dựng.</p></body></html>
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#F2EBDF">
+  <title>NÉT · Matte Lip (concept)</title>
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="NÉT · Matte Lip (concept)">
+  <meta property="og:description" content="Một nét là đủ. Khám phá bốn màu son và vẽ thử màu của bạn.">
+  <meta property="og:image" content="og.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Thỏi son NÉT Đỏ Gạch trên nền giấy kem và nét son đỏ.">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="fonts/fonts.css">
+  <link rel="stylesheet" href="style.css">
+  <script defer src="vendor/gsap.min.js"></script>
+  <script defer src="vendor/ScrollTrigger.min.js"></script>
+  <script defer src="vendor/lenis.min.js"></script>
+  <script defer src="main.js"></script>
+  <script defer src="https://stats.yan.io.vn/script.js" data-website-id="1a59d7f5-b87d-49ca-a7b7-c7bb9989fbac" data-domains="son.yan.io.vn"></script>
+</head>
+<body>
+  <main>
+    <section id="stage" data-gate aria-label="NÉT Matte Lip">
+      <div class="undercoat" aria-hidden="true"><div class="flood-texture"></div></div>
+      <div id="paint" aria-hidden="true">
+        <div class="half upper"><img class="swipe" src="img/swatch-1-a.webp" alt=""></div>
+        <div class="half lower"><img class="swipe" src="img/swatch-1-a.webp" alt=""></div>
+        <div id="flood"><div class="flood-texture"></div></div>
+      </div>
+      <div id="paper-return" aria-hidden="true"></div>
+      <div id="stack" aria-hidden="true"></div>
+      <header class="masthead"><span class="wordmark">NÉT</span><span>4 màu · Matte Lip</span></header>
+      <div class="ground" aria-hidden="true"><div class="shadow"></div></div>
+      <div id="lip">
+        <div id="lipTilt"><div class="lip-intro">
+          <div class="top-mask">
+            <div class="lip-top">
+              <img class="bullet" src="img/lip-bullet-1.webp" width="645" height="812" alt="">
+              <img class="sleeve" src="img/lip-sleeve.webp" width="645" height="842" alt="">
+            </div>
+          </div>
+          <img class="case" src="img/lip-case.webp" width="645" height="1104" alt="Thỏi son NÉT Matte Lip" data-gate-hero>
+          <div class="case-light" aria-hidden="true"><i></i></div>
+        </div></div>
+      </div>
+      <div id="loupe" aria-hidden="true"><div class="lens"></div><span>vân lì · ×8</span></div>
+      <h1 class="headline"><span class="mask"><span class="line">Một nét</span></span><span class="mask"><span class="line">là <em>đủ.</em></span></span></h1>
+      <div class="caption"><b>Đỏ Gạch · 01</b>Lì mịn, một lần quẹt là lên màu.</div>
+      <div class="cue">Cuộn để vặn son <span aria-hidden="true">↓</span></div>
+      <div id="shade-titles"></div>
+      <div class="folio">
+        <div class="chips" role="img" aria-label="Bảng màu Đỏ Gạch, Hồng Đất, Cam Cháy và Mận Chín"><i></i><i></i><i></i><i></i></div>
+        <span>Concept · Web Atelier</span>
+      </div>
+    </section>
+    <div id="static-shades"></div>
+    <section id="try" data-gate aria-labelledby="try-heading">
+      <header class="try-header">
+        <h2 id="try-heading">Chọn màu của bạn.</h2>
+        <p id="try-hint">Kéo ngón tay để vẽ thử một nét.</p>
+      </header>
+      <div class="workpad">
+        <div class="tools">
+          <div id="choices" role="group" aria-label="Chọn màu son"></div>
+          <button type="button" id="erase">Xoá</button>
+        </div>
+        <canvas id="drawing" aria-label="Giấy thử màu son" aria-describedby="try-hint"></canvas>
+      </div>
+      <div id="lineup"></div>
+    </section>
+  </main>
+  <footer data-gate>
+    <p>NÉT là thương hiệu hư cấu. Trang concept do Web Atelier thực hiện, ảnh tạo bằng AI.</p>
+    <a href="https://youtube.com/@webatelier">youtube.com/@webatelier</a>
+  </footer>
+</body>
+</html>
