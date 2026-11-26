@@ -25,11 +25,14 @@
 <body>
   <main>
     <section id="stage" data-gate aria-label="NÉT Matte Lip">
-      <div class="undercoat" aria-hidden="true"><div class="flood-texture"></div></div>
+      <div class="undercoat" aria-hidden="true"><div class="tex"></div></div>
       <div id="paint" aria-hidden="true">
-        <div class="half upper"><img class="swipe" src="img/swatch-1-a.webp" alt=""></div>
-        <div class="half lower"><img class="swipe" src="img/swatch-1-a.webp" alt=""></div>
-        <div id="flood"><div class="flood-texture"></div></div>
+        <!-- One frame rotated to the stroke angle. Every per-frame change below is a transform. -->
+        <div class="bandframe"><div class="reveal"><div class="reveal-in">
+          <div class="fillwin"><div class="tex"></div></div>
+          <div class="half upper"><img class="swipe" src="img/swatch-1-a.webp" alt="" decoding="async"></div>
+          <div class="half lower"><img class="swipe" src="img/swatch-1-a.webp" alt="" decoding="async"></div>
+        </div></div></div>
       </div>
       <div id="paper-return" aria-hidden="true"></div>
       <div id="stack" aria-hidden="true"></div>

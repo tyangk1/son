@@ -5,14 +5,19 @@ const SHADES = [
   ['Mận Chín', 'Mận chín, trầm cho buổi tối.', '#6E2236', '#F6E3E6', '#D9A5B2']
 ].map(([name, sentence, bg, ink, accent], i) => ({
   name, sentence, palette: { bg, ink, accent }, number: String(i + 1).padStart(2, '0'),
-  bullet: 'img/lip-bullet-' + (i + 1) + '.webp', swatch: 'img/swatch-' + (i + 1) + '-a.webp'
+  bullet: 'img/lip-bullet-' + (i + 1) + '.webp',
+  // The hero stroke (shade 1) is drawn 1.65x the screen width on phones, so it keeps the full 3328 px file;
+  // the other strokes span 1.2x and the 2200 px files stay sharp at DPR 3 while decoding half as much.
+  swatch: 'img/swatch-' + (i + 1) + (i === 0 || (innerWidth >= 1024 && innerWidth * devicePixelRatio * 1.2 > 2200) ? '-a.webp' : '-a-2200.webp')
 }));
 
 const paper = { bg: '#F2EBDF', ink: '#1D1B1A', accent: '#A3241D' };
 const $ = selector => document.querySelector(selector);
 const root = document.documentElement;
 const stage = $('#stage'), lip = $('#lip'), ground = $('.ground');
-const flood = $('#flood'), undercoat = $('.undercoat'), paint = $('#paint');
+const undercoat = $('.undercoat'), undercoatTex = $('.undercoat .tex'), paint = $('#paint');
+const bandframe = $('.bandframe'), reveal = $('.reveal'), revealIn = $('.reveal-in'), fillwin = $('.fillwin'), fillTex = $('.fillwin .tex');
+const halves = [...paint.querySelectorAll('.half')];
 const lipTop = $('#lip .lip-top'), tip = $('#lip .bullet'), sleeve = $('#lip .sleeve');
 const strokes = [...paint.querySelectorAll('.swipe')];
 const light = $('.case-light i'), loupe = $('#loupe'), lens = $('.lens');
@@ -29,7 +34,15 @@ const approach = gsap.parseEase('power2.inOut'), travel = gsap.parseEase('power1
 const inspect = gsap.parseEase('power2.out'), spread = gsap.parseEase('power3.inOut');
 const arrive = gsap.parseEase('expo.out'), stackEase = gsap.parseEase('power3.out');
 const secondsPerUnit = 40;
-const show = (element, visible) => { element.style.visibility = visible ? 'visible' : 'hidden'; };
+// Write a style only when its value changes: unchanged writes still cost style invalidation every frame.
+const written = new WeakMap();
+function set(element, prop, value) {
+  let cache = written.get(element);
+  if (!cache) written.set(element, cache = {});
+  if (cache[prop] !== value) { cache[prop] = value; element.style[prop] = value; }
+}
+const show = (element, visible) => set(element, 'visibility', visible ? 'visible' : 'hidden');
+const classOn = (element, name, on) => { if (element.classList.contains(name) !== on) element.classList.toggle(name, on); };
 
 function applyPalette(element, palette) {
   for (const [key, value] of Object.entries(palette)) element.style.setProperty('--' + key, value);
@@ -81,9 +94,17 @@ function measure() {
     const rad = deg * Math.PI / 180, cos = Math.cos(rad), sin = Math.sin(rad);
     // Both ends stay outside the viewport as each unscaled half moves vertically.
     length = Math.max(length, (w + height * Math.abs(sin) + 4) / cos);
+    // Frame in band coordinates (u along the stroke, v across it), centred on (w/2, cy).
+    // It must cover every viewport corner once the flood is complete.
+    let maxU = 0, maxV = 0;
+    for (const [x, y] of [[0, 0], [w, 0], [0, h], [w, h]]) {
+      maxU = Math.max(maxU, Math.abs((x - w / 2) * cos + (y - cy) * sin));
+      maxV = Math.max(maxV, Math.abs(-(x - w / 2) * sin + (y - cy) * cos));
+    }
+    const frameL = Math.max(length, 2 * maxU + 8), frameC = maxV + height + 4;
     return { deg, cy, length, height, cos, sin, start: (w - length * cos) / 2,
-      startY: cy - length * sin / 2,
-      clearance: Math.max(cy, h - cy) + Math.abs(w * Math.tan(rad) / 2) + height + 2 };
+      startY: cy - length * sin / 2, frameL, frameC, clearance: maxV + height / 2 + 2,
+      texSize: 2 * Math.hypot(w, h) };
   }
   geometry = { w, h, foot, hero, lipH, lipW,
     heroBand: band(desktop ? -16 : -20, h * (desktop ? .635 : .5025), w * (desktop ? 1.2 : 1.65), h * (desktop ? .17 : .125)),
@@ -91,51 +112,60 @@ function measure() {
   currentBand = null;
 }
 
+// The texture square sits at the band centre, rotated with the band, so the moving flood and the
+// settled undercoat show the macro in exactly the same place (no jump when the flood is swapped out).
+function texBox(band) {
+  const S = band.texSize;
+  return { left: geometry.w / 2 - S / 2, top: band.cy - S / 2, S };
+}
+
 function placeBand(scene, band) {
   if (currentBand === scene) return;
   currentBand = scene;
-  const g = geometry;
-  for (const img of strokes) {
-    img.src = scene.swatch;
-    Object.assign(img.style, { left: (g.w - band.length) / 2 + 'px', top: band.cy - band.height / 2 + 'px',
-      width: band.length + 'px', height: band.height + 'px', transform: 'rotate(' + band.deg + 'deg)' });
-  }
-  flood.style.backgroundColor = scene.palette.bg;
+  const L = band.frameL, C = band.frameC, bh = band.height, k = bh * .125;
+  Object.assign(bandframe.style, { width: L + 'px', height: 2 * C + 'px', left: geometry.w / 2 - L / 2 + 'px',
+    top: band.cy - C + 'px', transform: 'rotate(' + band.deg + 'deg)' });
+  const imgLeft = (L - band.length) / 2;
+  halves.forEach((half, i) => {
+    // Each half is a static window on one half of the photographed stroke; moving the window moves its edge.
+    Object.assign(half.style, { width: L + 'px', height: bh / 2 + 'px', top: (i ? C : C - bh / 2) + 'px' });
+    const img = half.firstElementChild;
+    if (img.getAttribute('src') !== scene.swatch) img.src = scene.swatch;
+    Object.assign(img.style, { left: imgLeft + 'px', width: band.length + 'px', height: bh + 'px', top: (i ? -bh / 2 : 0) + 'px' });
+  });
+  // The fill grows from inside the opaque pigment (k) to past every corner (C); its edges stay under the halves.
+  Object.assign(fillwin.style, { width: L + 'px', height: 2 * (C + k) + 'px', top: -k + 'px' });
+  const t = texBox(band);
+  Object.assign(fillTex.style, { width: t.S + 'px', height: t.S + 'px', left: L / 2 - t.S / 2 + 'px',
+    top: C + k - t.S / 2 + 'px', backgroundColor: scene.palette.bg });
+  band.fillK = k;
 }
 
 function drawBand(scene, band, swipe, fill) {
   show(paint, fill < 1);
-  if (fill >= 1) { show(flood, false); return; }
+  if (fill >= 1) return;
   placeBand(scene, band);
-  const distance = fill * band.clearance;
-  const right = 100 * (1 - swipe) + '%';
-  for (const stroke of strokes) {
-    const half = stroke.parentElement, top = half.classList.contains('upper');
-    half.style.transform = 'translateY(' + (top ? -distance : distance) + 'px)';
-    stroke.style.clipPath = top ? 'inset(0 ' + right + ' 50% 0)' : 'inset(50% ' + right + ' 0 0)';
-  }
-  show(flood, distance > 0);
-  if (!distance) return;
-  // The macro stays in viewport coordinates, identical to the settled undercoat.
-  // The soft join lies inside pigment. Only the two photographed edges touch the paper.
-  const center = (band.cy - geometry.h / 2) * band.cos;
-  const reach = distance * band.cos;
-  const feather = Math.min(reach * 2, band.height * .28);
-  const stop = offset => 'calc(50% + ' + offset + 'px)';
-  flood.style.maskImage = 'linear-gradient(' + (180 + band.deg) + 'deg, transparent ' +
-    stop(center - reach - feather) + ', black ' + stop(center - reach) + ', black ' +
-    stop(center + reach) + ', transparent ' + stop(center + reach + feather) + ')';
-  const contact = band.start + swipe * band.length * band.cos;
-  const contactY = band.startY + swipe * band.length * band.sin;
-  const xAt = y => contact - (y - contactY) * band.sin / band.cos;
-  flood.style.clipPath = swipe < 1 ? 'polygon(0 0,' + xAt(0) + 'px 0,' + xAt(geometry.h) + 'px 100%,0 100%)' : 'none';
+  const L = band.frameL, C = band.frameC, k = band.fillK;
+  const d = fill * band.clearance;
+  // Reveal up to the lipstick tip: the window slides, its content slides back, so the stroke stays put.
+  const tip = (L - band.length) / 2 + swipe * band.length;
+  const tx = swipe >= 1 ? 0 : tip - L;
+  set(reveal, 'transform', 'translate3d(' + tx + 'px,0,0)');
+  set(revealIn, 'transform', 'translate3d(' + -tx + 'px,0,0)');
+  set(halves[0], 'transform', 'translate3d(0,' + -d + 'px,0)');
+  set(halves[1], 'transform', 'translate3d(0,' + d + 'px,0)');
+  show(fillwin, d > 0);
+  if (!d) return;
+  const sy = (d + k) / (C + k);
+  set(fillwin, 'transform', 'scaleY(' + sy + ')');
+  set(fillTex, 'transform', 'scaleY(' + 1 / sy + ')');
 }
 
 function paintPose(x, y, rotation, scale) {
   // Source pixel (390, 1) is the photographed tip's contact point.
   const tipX = geometry.lipW * 390 / assembly.w, tipY = geometry.lipH / assembly.h;
-  lip.style.transformOrigin = tipX + 'px ' + tipY + 'px';
-  lip.style.transform = 'translate3d(' + (x - tipX) + 'px,' + (y - tipY) + 'px,0) rotate(' + rotation + 'deg) scale(' + scale + ')';
+  set(lip, 'transformOrigin', tipX + 'px ' + tipY + 'px');
+  set(lip, 'transform', 'translate3d(' + (x - tipX) + 'px,' + (y - tipY) + 'px,0) rotate(' + rotation + 'deg) scale(' + scale + ')');
 }
 
 function renderProduct(p, index, t, band, swipe) {
@@ -178,16 +208,16 @@ function renderProduct(p, index, t, band, swipe) {
   const exit = stackEase(phase(p, .868, .072));
   y += exit * 1.2 * g.h;
   paintPose(x, y, rotation, scale);
-  ground.style.transform = 'translate(' + (g.hero - g.lipW * .21) + 'px,' + (g.foot - g.lipH * .022) + 'px) rotate(-7deg) scale(' + (1 - (1 - shadow) * .28) + ')';
-  ground.style.opacity = shadow * (1 - exit);
-  ground.classList.toggle('breathe', !still && !reduced.matches && p < .04 && !document.hidden);
+  set(ground, 'transform', 'translate(' + (g.hero - g.lipW * .21) + 'px,' + (g.foot - g.lipH * .022) + 'px) rotate(-7deg) scale(' + (1 - (1 - shadow) * .28) + ')');
+  set(ground, 'opacity', String(shadow * (1 - exit)));
+  classOn(ground, 'breathe', !still && !reduced.matches && p < .04 && !document.hidden);
   if (bullet !== currentBullet) { tip.src = scenes[bullet].bullet; currentBullet = bullet; }
-  tip.style.transform = 'translateY(' + (1 - heroTwist) * .34 * assembly.parts.case.y / assembly.parts.bullet.h * 100 + '%)';
-  lipTop.style.transform = 'translateY(' + 101 * retract + '%)';
+  set(tip, 'transform', 'translateY(' + (1 - heroTwist) * .34 * assembly.parts.case.y / assembly.parts.bullet.h * 100 + '%)');
+  set(lipTop, 'transform', 'translateY(' + 101 * retract + '%)');
   const overlap = assembly.parts.bullet.h - assembly.parts.sleeve.y - 1;
-  sleeve.style.clipPath = 'inset(' + heroTwist * overlap / assembly.parts.sleeve.h * 100 + '% 0 0)';
-  light.style.opacity = Math.sin(Math.PI * (shine % 1)) * .7;
-  light.style.transform = 'translateX(' + mix(-120, 310, shine % 1) + '%)';
+  set(sleeve, 'clipPath', 'inset(' + (heroTwist * overlap / assembly.parts.sleeve.h * 100).toFixed(2) + '% 0 0)');
+  set(light, 'opacity', String(Math.sin(Math.PI * (shine % 1)) * .7));
+  set(light, 'transform', 'translateX(' + mix(-120, 310, shine % 1) + '%)');
   const upright = p <= .14 || (t >= (index ? .178 : .17) && p < .86);
   const allow = !still && !reduced.matches && pointer.matches && upright;
   if (tiltAllowed && !allow) { tilt.tween.pause(); gsap.set('#lipTilt', { rotation: 0 }); }
@@ -205,13 +235,18 @@ function render() {
   renderProduct(p, index, t, band, swipe);
 
   const heroExit = phase(p, .14, .032);
-  headerLines.forEach((line, i) => { line.style.translate = '0 ' + 125 * approach(clamp(heroExit * 1.1 - i * .1)) + '%'; });
+  headerLines.forEach((line, i) => set(line, 'translate', '0 ' + 125 * approach(clamp(heroExit * 1.1 - i * .1)) + '%'));
   show(headline, heroExit < 1);
-  caption.style.opacity = 1 - heroExit;
-  cue.style.opacity = 1 - phase(p, .04, .08);
+  set(caption, 'opacity', String(1 - heroExit));
+  set(cue, 'opacity', String(1 - phase(p, .04, .08)));
   const settled = fill >= 1 ? index : index - 1;
-  undercoat.style.display = settled < 0 ? 'none' : 'block';
-  if (settled >= 0) undercoat.style.backgroundColor = scenes[settled].palette.bg;
+  set(undercoat, 'display', settled < 0 ? 'none' : 'block');
+  if (settled >= 0 && undercoat.dataset.scene !== settled + '/' + geometry.w + 'x' + geometry.h) {
+    undercoat.dataset.scene = settled + '/' + geometry.w + 'x' + geometry.h;
+    const ub = settled ? geometry.swipeBand : geometry.heroBand, t = texBox(ub);
+    Object.assign(undercoatTex.style, { width: t.S + 'px', height: t.S + 'px', left: t.left + 'px', top: t.top + 'px',
+      transform: 'rotate(' + ub.deg + 'deg)', backgroundColor: scenes[settled].palette.bg });
+  }
   const palette = p >= .975 ? paper : fill >= .78 ? scene.palette : scenes[index - 1]?.palette || paper;
   if (currentPalette !== palette) { applyPalette(root, palette); currentPalette = palette; }
   const enterStart = index ? .16 : .148;
@@ -223,25 +258,25 @@ function render() {
       const delay = row * .04 / secondsPerUnit;
       const offset = previous || p >= .86 ? approach(phase(previous ? t : p - .86, delay, previous ? .02 : .006))
         : 1 - arrive(phase(t, enterStart + delay, index ? .014 : .017));
-      line.style.transform = 'translateY(' + 125 * offset + '%)';
+      set(line, 'transform', 'translateY(' + 125 * offset + '%)');
     });
-    chips[i].classList.toggle('active', i === Math.max(0, settled) && p < .86);
+    classOn(chips[i], 'active', i === Math.max(0, settled) && p < .86);
   }
   const hasLoupe = !index && t >= .04 && t < .08;
   show(loupe, hasLoupe);
   if (hasLoupe) {
     const v = inspect(phase(t, .04, .04)), pos = .28 + .4 * v;
-    loupe.style.transform = 'translate(' + (band.start + band.length * band.cos * pos - 60) + 'px,' +
-      (band.startY + band.length * band.sin * pos - 60) + 'px)';
-    lens.style.backgroundPosition = (23 + v * 40) + '% 30%';
-    loupe.style.opacity = Math.min(phase(t, .04, .004), 1 - phase(t, .076, .004));
+    set(loupe, 'transform', 'translate(' + (band.start + band.length * band.cos * pos - 60) + 'px,' +
+      (band.startY + band.length * band.sin * pos - 60) + 'px)');
+    set(lens, 'backgroundPosition', (23 + v * 40) + '% 30%');
+    set(loupe, 'opacity', String(Math.min(phase(t, .04, .004), 1 - phase(t, .076, .004))));
   }
   show(stack, p >= .86);
   if (p >= .86) scenes.forEach((s, i) => {
     const v = stackEase(phase(p, .86 + i * .05 / secondsPerUnit, .076));
-    s.strip.style.transform = 'translateX(calc(' + ((v - 1) * 122) + 'vw + ' + [1, 11, 5, 0][i] + 'px)) scaleX(-1)';
+    set(s.strip, 'transform', 'translateX(calc(' + ((v - 1) * 122) + 'vw + ' + [1, 11, 5, 0][i] + 'px)) scaleX(-1)');
   });
-  paperReturn.style.clipPath = 'inset(' + (100 * (1 - approach(phase(p, .94, .06)))) + '% 0 0)';
+  set(paperReturn, 'transform', 'translate3d(0,' + (101 * (1 - approach(phase(p, .94, .06)))) + '%,0)');
 }
 
 function buildStaticSections() {
@@ -287,7 +322,7 @@ function configure() {
   gsap.ticker.add(tick);
   gsap.ticker.lagSmoothing(0);
   master = gsap.timeline({
-    scrollTrigger: { trigger: stage, start: 'top top', end: () => '+=' + innerHeight * 9, pin: true, scrub: .6, invalidateOnRefresh: true },
+    scrollTrigger: { trigger: stage, start: 'top top', end: () => '+=' + innerHeight * 9, pin: true, scrub: matchMedia('(pointer: coarse)').matches ? .35 : true, invalidateOnRefresh: true },
     onUpdate: render
   });
   master.fromTo(playhead, { p: 0 }, { p: 1, duration: secondsPerUnit, ease: 'none' });
@@ -306,6 +341,9 @@ async function init() {
   root.style.setProperty('--sleeve-top', 100 * assembly.parts.sleeve.y / assembly.parts.case.y + '%');
   gsap.registerPlugin(ScrollTrigger);
   configure();
+  // Decode every bullet and stroke now, so no image is decoded for the first time in the middle of a swipe.
+  const warm = () => scenes.forEach(scene => [scene.bullet, scene.swatch].forEach(src => { const im = new Image(); im.src = src; im.decode().catch(() => {}); }));
+  'requestIdleCallback' in window ? requestIdleCallback(warm, { timeout: 1200 }) : setTimeout(warm, 300);
   reduced.addEventListener('change', configure);
   let resizeFrame, savedPosition;
   const resize = () => {
